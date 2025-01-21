@@ -835,6 +835,7 @@ static int cmd_vfs_fdt_load(struct vmm_chardev *cdev,
 	struct vmm_devtree_node *parent;
 	struct fdt_fileinfo fdt;
 
+	// 获取 /guests 节点
 	parent = vmm_devtree_getnode(devtree_path);
 	if (!parent) {
 		vmm_cprintf(cdev, "Devtree path %s does not exist.\n",
@@ -842,6 +843,7 @@ static int cmd_vfs_fdt_load(struct vmm_chardev *cdev,
 		return VMM_EINVALID;
 	}
 
+	// 获取 /geusts/guest0 节点
 	root = vmm_devtree_getchild(parent, devtree_root_name);
 	if (root) {
 		vmm_devtree_dref_node(root);
@@ -881,19 +883,23 @@ static int cmd_vfs_fdt_load(struct vmm_chardev *cdev,
 		goto fail_freedata;
 	}
 
+	// 验证设备树文件格式
 	rc = libfdt_parse_fileinfo((virtual_addr_t)fdt_data, &fdt);
 	if (rc) {
 		goto fail_freedata;
 	}
 
 	root = NULL;
+	// 解析设备树文件 /images/riscv/virt64-guest.dtb
 	rc = libfdt_parse_devtree(&fdt, &root, devtree_root_name, parent);
 	if (rc) {
 		goto fail_freedata;
 	}
 
+	// 获取 alias node
 	anode = vmm_devtree_getchild(root, VMM_DEVTREE_ALIASES_NODE_NAME);
 
+	// 分别及诶
 	for (a = 0; a < aliasc; a++) {
 		if (!anode) {
 			vmm_cprintf(cdev, "Error: %s node not available\n",
@@ -1066,6 +1072,14 @@ fail:
 	return rc;
 }
 
+/* 
+	Xvisor 中的核心函数:
+	vfs guest_fdt_load guest0 
+    	/images/riscv/virt64-guest.dtb 2
+    	mem0,physical_size,physsize,0x10000000
+    	net0,switch,string,br0
+    	shmem0,shared_mem,string,default
+*/
 static int cmd_vfs_guest_fdt_load(struct vmm_chardev *cdev,
 				  const char *guest_name,
 				  const char *path,
@@ -1078,11 +1092,13 @@ static int cmd_vfs_guest_fdt_load(struct vmm_chardev *cdev,
 	struct vmm_devtree_node *guests_node, *guest_node;
 	struct vmm_devtree_node *vcpu_tmpl_node, *vcpus_node, *vcpu_node;
 
+	// 检查 vcpu_count 是否有效
 	if (!vcpu_count) {
 		vmm_cprintf(cdev, "VCPU count should be non-zero\n");
 		return VMM_EINVALID;
 	}
 
+	// 获取 /guests node
 	guests_node = vmm_devtree_getnode(VMM_DEVTREE_PATH_SEPARATOR_STRING
 					  VMM_DEVTREE_GUESTINFO_NODE_NAME);
 	if (!guests_node) {
@@ -1091,6 +1107,7 @@ static int cmd_vfs_guest_fdt_load(struct vmm_chardev *cdev,
 		return VMM_ENOTAVAIL;
 	}
 
+	// 加载设备树 FDT 文件
 	rc = cmd_vfs_fdt_load(cdev, VMM_DEVTREE_PATH_SEPARATOR_STRING
 			      VMM_DEVTREE_GUESTINFO_NODE_NAME, guest_name,
 			      path, aliasc, aliasv);
@@ -1100,6 +1117,7 @@ static int cmd_vfs_guest_fdt_load(struct vmm_chardev *cdev,
 		return rc;
 	}
 
+	// 获取 /guests/guest0 node
 	guest_node = vmm_devtree_getchild(guests_node, guest_name);
 	vmm_devtree_dref_node(guests_node);
 	if (!guest_node) {
@@ -1107,6 +1125,7 @@ static int cmd_vfs_guest_fdt_load(struct vmm_chardev *cdev,
 		return VMM_ENOTAVAIL;
 	}
 
+	// 获取 /guests/guest0/
 	vcpu_tmpl_node = vmm_devtree_getchild(guest_node,
 					  VMM_DEVTREE_VCPU_TEMPLATE_NODE_NAME);
 	if (!vcpu_tmpl_node) {
@@ -1116,6 +1135,7 @@ static int cmd_vfs_guest_fdt_load(struct vmm_chardev *cdev,
 		return VMM_ENOTAVAIL;
 	}
 
+	// 添加 /guests/guest0/vcpus
 	vcpus_node = vmm_devtree_addnode(guest_node,
 					 VMM_DEVTREE_VCPUS_NODE_NAME);
 	if (!vcpus_node) {
@@ -1126,6 +1146,7 @@ static int cmd_vfs_guest_fdt_load(struct vmm_chardev *cdev,
 		vmm_devtree_delnode(guest_node);
 	}
 
+	// 在 /guests/guest0/vcpus 下添加 vcpu_count 个 vcpus 节点
 	for (i = 0; i < vcpu_count; i++) {
 		vmm_snprintf(name, sizeof(name), "vcpu%d", i);
 		rc  = vmm_devtree_copynode(vcpus_node, name, vcpu_tmpl_node);
@@ -1156,6 +1177,7 @@ static int cmd_vfs_guest_fdt_load(struct vmm_chardev *cdev,
 		vmm_devtree_dref_node(vcpu_node);
 	}
 
+	// 删去 vcpu_templ_node, 模板节点
 	vmm_devtree_dref_node(vcpu_tmpl_node);
 	vmm_devtree_dref_node(guest_node);
 
